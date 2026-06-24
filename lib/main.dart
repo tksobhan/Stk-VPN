@@ -52,7 +52,7 @@ class _MainPageState extends State<MainPage> {
   }
 }
 
-// ========== صفحه خانه (همان دکمه اتصال) ==========
+// ========== صفحه خانه ==========
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -88,7 +88,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 20),
             Text(
-              _isConnected ? 'وصل شده ✅' : 'قطع است ❌',
+              _isConnected ? '✅ وصل شده' : '❌ قطع است',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -113,9 +113,16 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ========== صفحه تنظیمات (فعلاً ساده) ==========
-class SettingsPage extends StatelessWidget {
+// ========== صفحه تنظیمات ==========
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _isPersian = true;
 
   @override
   Widget build(BuildContext context) {
@@ -125,14 +132,55 @@ class SettingsPage extends StatelessWidget {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
-      body: const Center(
-        child: Text('تنظیمات به زودی...'),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            // دکمه تغییر زبان
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.language),
+                title: Text(_isPersian ? 'زبان: فارسی' : 'زبان: انگلیسی'),
+                trailing: Switch(
+                  value: _isPersian,
+                  onChanged: (value) {
+                    setState(() {
+                      _isPersian = value;
+                    });
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // سایر تنظیمات (فعلاً فقط یک placeholder)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.vpn_key),
+                title: const Text('مدیریت کانفیگ‌ها'),
+                subtitle: const Text('افزودن، ویرایش و حذف کانفیگ‌ها'),
+                onTap: () {
+                  // در آینده
+                },
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.speed),
+                title: const Text('تنظیمات اتصال'),
+                subtitle: const Text('Kill Switch، Mux و ...'),
+                onTap: () {
+                  // در آینده
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ========== صفحه ادمین (فعلاً ساده) ==========
+// ========== صفحه ادمین ==========
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
 
