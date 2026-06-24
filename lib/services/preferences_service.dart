@@ -1,32 +1,31 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesService {
   static const String _keyPassword = 'admin_password';
   static const String _keyLanguage = 'language';
-  static const String _keyFirstRun = 'first_run';
-
-  static final _storage = const FlutterSecureStorage();
 
   // ذخیره رمز عبور
   static Future<void> savePassword(String password) async {
-    await _storage.write(key: _keyPassword, value: password);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyPassword, password);
   }
 
   // دریافت رمز عبور (پیش‌فرض: 1234)
   static Future<String> getPassword() async {
-    final password = await _storage.read(key: _keyPassword);
-    return password ?? '1234';
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyPassword) ?? '1234';
   }
 
   // ذخیره زبان (fa/en)
   static Future<void> saveLanguage(String lang) async {
-    await _storage.write(key: _keyLanguage, value: lang);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLanguage, lang);
   }
 
   // دریافت زبان (پیش‌فرض: fa)
   static Future<String> getLanguage() async {
-    final lang = await _storage.read(key: _keyLanguage);
-    return lang ?? 'fa';
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyLanguage) ?? 'fa';
   }
 
   // تغییر رمز عبور (با تأیید رمز قبلی)
