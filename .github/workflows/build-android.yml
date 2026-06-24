@@ -27,6 +27,7 @@ jobs:
       - name: نصب Flutter
         uses: subosito/flutter-action@v2
         with:
+          channel: 'beta'
           flutter-version: 'stable'
 
       - name: دریافت وابستگی‌ها
