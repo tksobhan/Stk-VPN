@@ -9,7 +9,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'V2RAY stk',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
       home: const MainPage(),
     );
   }
@@ -28,7 +31,7 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = [
     const HomePage(),
     const SettingsPage(),
-    const AdminWrapper(), // صفحه ادمین با ورود
+    const AdminWrapper(),
   ];
 
   @override
@@ -71,11 +74,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('V2RAY stk'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
       ),
       body: Center(
         child: Column(
@@ -84,7 +89,7 @@ class _HomePageState extends State<HomePage> {
             Icon(
               _isConnected ? Icons.vpn_lock : Icons.vpn_key,
               size: 80,
-              color: _isConnected ? Colors.green : Colors.grey,
+              color: _isConnected ? Colors.green : colorScheme.primary.withOpacity(0.5),
             ),
             const SizedBox(height: 20),
             Text(
@@ -92,18 +97,21 @@ class _HomePageState extends State<HomePage> {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: _isConnected ? Colors.green : Colors.red,
+                color: _isConnected ? Colors.green : colorScheme.error,
               ),
             ),
             const SizedBox(height: 40),
-            ElevatedButton(
+            FilledButton.icon(
               onPressed: _toggleConnection,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-              ),
-              child: Text(
+              icon: Icon(_isConnected ? Icons.stop : Icons.play_arrow),
+              label: Text(
                 _isConnected ? 'قطع اتصال' : 'اتصال',
                 style: const TextStyle(fontSize: 18),
+              ),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                backgroundColor: _isConnected ? colorScheme.error : colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
               ),
             ),
           ],
@@ -126,11 +134,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('تنظیمات'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -147,6 +157,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _isPersian = value;
                     });
                   },
+                  activeColor: colorScheme.primary,
                 ),
               ),
             ),
@@ -230,21 +241,23 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('ورود به پنل ادمین'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.admin_panel_settings,
               size: 80,
-              color: Colors.blue,
+              color: colorScheme.primary,
             ),
             const SizedBox(height: 30),
             TextField(
@@ -258,9 +271,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
               onSubmitted: (_) => _login(),
             ),
             const SizedBox(height: 20),
-            ElevatedButton(
+            FilledButton(
               onPressed: _login,
-              style: ElevatedButton.styleFrom(
+              style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
               ),
               child: const Text(
@@ -283,11 +296,13 @@ class AdminPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('پنل ادمین'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
