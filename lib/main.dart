@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_sing_box/flutter_sing_box.dart';
+import 'package:singbox/singbox.dart';
 
 void main() => runApp(const MyApp());
 
@@ -24,7 +24,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final SingBox _singbox = SingBox();
+  final Singbox _singbox = Singbox();
   bool _isConnected = false;
   bool _isInitializing = true;
 
@@ -68,7 +68,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _initializeSingbox() async {
     try {
-      await _singbox.initialize();
+      await _singbox.init();
     } catch (e) {
       print('❌ خطا در مقداردهی اولیه: $e');
     } finally {
