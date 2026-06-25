@@ -1,52 +1,26 @@
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:v2ray_flutter/v2ray_flutter.dart';
 
 class VpnService {
   static final VpnService _instance = VpnService._internal();
   factory VpnService() => _instance;
   VpnService._internal();
 
-  V2ray? _v2ray;
+  final V2RayFlutter _v2ray = V2RayFlutter();
   bool _isConnected = false;
-  bool _isInitialized = false;
 
   bool get isConnected => _isConnected;
 
-  Future<void> initialize({
-    String notificationIconResourceType = 'mipmap',
-    String notificationIconResourceName = 'ic_launcher',
-  }) async {
-    if (_isInitialized) return;
-
-    _v2ray = V2ray(
-      onStatusChanged: (status) {
-        // در صورت نیاز می‌توان وضعیت را پردازش کرد
-        // اما فعلاً از _isConnected استفاده می‌کنیم
-      },
-    );
-
-    await _v2ray!.initialize(
-      notificationIconResourceType: notificationIconResourceType,
-      notificationIconResourceName: notificationIconResourceName,
-    );
-
-    _isInitialized = true;
-    print('✅ V2Ray مقداردهی اولیه شد');
+  Future<void> initialize() async {
+    print('✅ V2RayFlutter مقداردهی اولیه شد');
   }
 
   Future<void> startVpn(String config) async {
-    if (!_isInitialized) {
-      await initialize();
-    }
-
     try {
-      await _v2ray!.startV2Ray(
-        config: config,
-        remark: 'V2RAY stk',
-      );
+      await _v2ray.startV2Ray(config: config);
       _isConnected = true;
-      print('✅ V2Ray متصل شد');
+      print('✅ V2RayFlutter متصل شد');
     } catch (e) {
-      print('❌ خطا در اتصال V2Ray: $e');
+      print('❌ خطا در اتصال V2RayFlutter: $e');
       _isConnected = false;
       rethrow;
     }
@@ -54,11 +28,11 @@ class VpnService {
 
   Future<void> stopVpn() async {
     try {
-      await _v2ray?.stopV2Ray();
+      await _v2ray.stopV2Ray();
       _isConnected = false;
-      print('❌ V2Ray قطع شد');
+      print('❌ V2RayFlutter قطع شد');
     } catch (e) {
-      print('❌ خطا در قطع V2Ray: $e');
+      print('❌ خطا در قطع V2RayFlutter: $e');
       rethrow;
     }
   }
@@ -71,12 +45,11 @@ class VpnService {
     }
   }
 
-  Future<String?> getServerDelay(String config) async {
+  Future<bool> isRunning() async {
     try {
-      final delay = await _v2ray?.getServerDelay(config: config);
-      return delay != null ? '${delay}ms' : null;
+      return await _v2ray.isRunning();
     } catch (e) {
-      return null;
+      return false;
     }
   }
 }
