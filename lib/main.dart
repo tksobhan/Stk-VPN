@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:v2ray_stk/services/preferences_service.dart';
-import 'package:v2ray_stk/services/vpn_service.dart';
+import 'package:v2ray_stk/services/vpn_factory.dart';
+import 'package:v2ray_stk/services/vpn_service_interface.dart';
 
 void main() => runApp(const MyApp());
 
@@ -66,23 +67,56 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final VpnService _vpnService = VpnService();
+  VpnService? _vpnService;
   bool _isLoading = false;
+  bool _isInitializing = true;
 
-  // یک کانفیگ نمونه (بعداً از صفحه مدیریت کانفیگ‌ها گرفته می‌شود)
+  // نمونه کانفیگ (بعداً از صفحه مدیریت کانفیگ‌ها گرفته می‌شود)
   static const String _sampleConfig = '''
 {
-  "log": { "level": "info" },
-  "inbounds": [ { "type": "tun" } ],
-  "outbounds": [ { "type": "direct" } ]
+  "log": {
+    "loglevel": "none"
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ]
 }
 ''';
 
+  @override
+  void initState() {
+    super.initState();
+    _loadCore();
+  }
+
+  Future<void> _loadCore() async {
+    final coreName = await PreferencesService.getCore();
+    final core = coreName == 'singbox' ? VpnCore.singbox : VpnCore.v2ray;
+    setState(() {
+      _vpnService = VpnFactory.create(core);
+      _isInitializing = false;
+    });
+  }
+
   Future<void> _toggleConnection() async {
-    if (_isLoading) return;
+    if (_isLoading || _vpnService == null) return;
     setState(() => _isLoading = true);
     try {
-      await _vpnService.toggleVpn(_sampleConfig);
+      await _vpnService!.toggleVpn(_sampleConfig);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا: ${e.toString()}')),
@@ -95,7 +129,19 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isConnected = _vpnService.isConnected;
+
+    if (_isInitializing) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('V2RAY stk'),
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final isConnected = _vpnService?.isConnected ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -153,18 +199,21 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _isPersian = true;
+  String _currentCore = 'v2ray';
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadLanguage();
+    _loadSettings();
   }
 
-  Future<void> _loadLanguage() async {
+  Future<void> _loadSettings() async {
     final lang = await PreferencesService.getLanguage();
+    final core = await PreferencesService.getCore();
     setState(() {
       _isPersian = lang == 'fa';
+      _currentCore = core;
       _isLoading = false;
     });
   }
@@ -172,9 +221,19 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _toggleLanguage(bool value) async {
     final lang = value ? 'fa' : 'en';
     await PreferencesService.saveLanguage(lang);
-    setState(() {
-      _isPersian = value;
-    });
+    setState(() => _isPersian = value);
+  }
+
+  Future<void> _changeCore(String core) async {
+    await PreferencesService.saveCore(core);
+    setState(() => _currentCore = core);
+    // اپلیکیشن را ریستارت کنید تا هسته جدید اعمال شود
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('هسته به ${core == 'v2ray' ? 'V2Ray' : 'Sing-box'} تغییر کرد. لطفاً اپ را مجدداً راه‌اندازی کنید.'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -201,6 +260,23 @@ class _SettingsPageState extends State<SettingsPage> {
                         value: _isPersian,
                         onChanged: _toggleLanguage,
                         activeColor: colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.settings_ethernet),
+                      title: const Text('هسته VPN'),
+                      subtitle: Text(_currentCore == 'v2ray' ? 'V2Ray' : 'Sing-box'),
+                      trailing: DropdownButton<String>(
+                        value: _currentCore,
+                        items: const [
+                          DropdownMenuItem(value: 'v2ray', child: Text('V2Ray')),
+                          DropdownMenuItem(value: 'singbox', child: Text('Sing-box')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) _changeCore(value);
+                        },
                       ),
                     ),
                   ),
@@ -564,7 +640,6 @@ class ConfigManagementPage extends StatefulWidget {
 }
 
 class _ConfigManagementPageState extends State<ConfigManagementPage> {
-  // داده‌های نمونه (بعداً از SharedPreferences یا فایل خوانده می‌شود)
   List<Map<String, String>> _configs = [
     {'name': 'سرور ایران', 'address': 'ir.example.com', 'status': 'فعال'},
     {'name': 'سرور آلمان', 'address': 'de.example.com', 'status': 'غیرفعال'},
@@ -689,3 +764,4 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
     );
   }
 }
+// force rebuild
