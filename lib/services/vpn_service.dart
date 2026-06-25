@@ -1,28 +1,27 @@
-import 'package:flutter_singbox_client/flutter_singbox_client.dart';
-import 'dart:async';
+import 'package:v2ray_flutter/v2ray_flutter.dart';
 
 class VpnService {
   static final VpnService _instance = VpnService._internal();
   factory VpnService() => _instance;
   VpnService._internal();
 
-  final Singbox _singbox = Singbox();
+  final V2RayFlutter _v2ray = V2RayFlutter();
   bool _isConnected = false;
 
   bool get isConnected => _isConnected;
 
   Future<void> initialize() async {
-    // Singbox به مقداردهی اولیه خاصی نیاز ندارد
-    print('✅ Sing-box مقداردهی اولیه شد');
+    // v2ray_flutter نیازی به مقداردهی اولیه جداگانه ندارد
+    print('✅ V2RayFlutter مقداردهی اولیه شد');
   }
 
   Future<void> startVpn(String config) async {
     try {
-      await _singbox.start(config);
+      await _v2ray.startV2Ray(config: config);
       _isConnected = true;
-      print('✅ Sing-box متصل شد');
+      print('✅ V2RayFlutter متصل شد');
     } catch (e) {
-      print('❌ خطا در اتصال Sing-box: $e');
+      print('❌ خطا در اتصال V2RayFlutter: $e');
       _isConnected = false;
       rethrow;
     }
@@ -30,11 +29,11 @@ class VpnService {
 
   Future<void> stopVpn() async {
     try {
-      await _singbox.stop();
+      await _v2ray.stopV2Ray();
       _isConnected = false;
-      print('❌ Sing-box قطع شد');
+      print('❌ V2RayFlutter قطع شد');
     } catch (e) {
-      print('❌ خطا در قطع Sing-box: $e');
+      print('❌ خطا در قطع V2RayFlutter: $e');
       rethrow;
     }
   }
@@ -49,7 +48,7 @@ class VpnService {
 
   Future<bool> isRunning() async {
     try {
-      return await _singbox.isRunning();
+      return await _v2ray.isRunning();
     } catch (e) {
       return false;
     }
