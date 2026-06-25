@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.1.2
-  flutter_v2ray: ^1.2.0
+  flutter_v2ray: ^1.0.10
   flutter_singbox_client: 1.0.0
 
 dev_dependencies:
