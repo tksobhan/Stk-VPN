@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:singbox_mm/singbox_mm.dart';
+import 'package:flutter_sing_box/flutter_sing_box.dart';
 
 void main() => runApp(const MyApp());
 
@@ -24,7 +24,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final SingboxMM _singbox = SingboxMM();
+  final SingBox _singbox = SingBox();
   bool _isConnected = false;
   bool _isInitializing = true;
 
