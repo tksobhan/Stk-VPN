@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:v2ray_stk/services/preferences_service.dart';
 import 'package:v2ray_stk/services/vpn_service.dart';
+import 'package:v2ray_stk/services/config_service.dart';
 import 'dart:convert';
 import 'dart:core';
 
@@ -71,31 +72,8 @@ class _HomePageState extends State<HomePage> {
   final VpnService _vpnService = VpnService();
   bool _isLoading = false;
   bool _isInitializing = true;
-
-  static const String _sampleConfig = '''
-{
-  "log": {
-    "loglevel": "none"
-  },
-  "inbounds": [
-    {
-      "listen": "127.0.0.1",
-      "port": 10808,
-      "protocol": "socks",
-      "settings": {
-        "auth": "noauth",
-        "udp": true
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "freedom",
-      "settings": {}
-    }
-  ]
-}
-''';
+  String? _activeConfig;
+  bool _isConnected = false;
 
   @override
   void initState() {
@@ -106,6 +84,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initializeVpn() async {
     try {
       await _vpnService.initialize();
+      _activeConfig = await ConfigService.loadActiveConfig();
+      _isConnected = await _vpnService.isConnected;
     } catch (e) {
       print('خطا در مقداردهی اولیه VPN: $e');
     } finally {
@@ -119,9 +99,17 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _toggleConnection() async {
     if (_isLoading || _isInitializing) return;
+    if (_activeConfig == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لطفاً ابتدا یک کانفیگ فعال را در پنل ادمین انتخاب کنید')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      await _vpnService.toggleVpn(_sampleConfig);
+      await _vpnService.toggleVpn(_activeConfig!);
+      _isConnected = await _vpnService.isConnected;
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا: ${e.toString()}')),
@@ -134,7 +122,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isConnected = _vpnService.isConnected;
 
     if (_isInitializing) {
       return Scaffold(
@@ -152,6 +139,14 @@ class _HomePageState extends State<HomePage> {
         title: const Text('V2RAY stk'),
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
+        actions: [
+          if (_activeConfig != null)
+            IconButton(
+              icon: const Icon(Icons.check_circle, color: Colors.green),
+              onPressed: null,
+              tooltip: 'کانفیگ فعال است',
+            ),
+        ],
       ),
       body: Center(
         child: Column(
@@ -159,30 +154,38 @@ class _HomePageState extends State<HomePage> {
           children: [
             if (_isLoading) const CircularProgressIndicator() else const SizedBox(height: 80),
             Icon(
-              isConnected ? Icons.vpn_lock : Icons.vpn_key,
+              _isConnected ? Icons.vpn_lock : Icons.vpn_key,
               size: 80,
-              color: isConnected ? Colors.green : colorScheme.primary.withOpacity(0.5),
+              color: _isConnected ? Colors.green : colorScheme.primary.withOpacity(0.5),
             ),
             const SizedBox(height: 20),
             Text(
-              isConnected ? '✅ وصل شده' : '❌ قطع است',
+              _isConnected ? '✅ وصل شده' : '❌ قطع است',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: isConnected ? Colors.green : colorScheme.error,
+                color: _isConnected ? Colors.green : colorScheme.error,
               ),
             ),
+            if (_activeConfig != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  'کانفیگ فعال: ${_activeConfig!.length > 30 ? _activeConfig!.substring(0, 30) + '...' : _activeConfig!}',
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.6)),
+                ),
+              ),
             const SizedBox(height: 40),
             FilledButton.icon(
               onPressed: (_isLoading || _isInitializing) ? null : _toggleConnection,
-              icon: Icon(isConnected ? Icons.stop : Icons.play_arrow),
+              icon: Icon(_isConnected ? Icons.stop : Icons.play_arrow),
               label: Text(
-                isConnected ? 'قطع اتصال' : 'اتصال',
+                _isConnected ? 'قطع اتصال' : 'اتصال',
                 style: const TextStyle(fontSize: 18),
               ),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                backgroundColor: isConnected ? colorScheme.error : colorScheme.primary,
+                backgroundColor: _isConnected ? colorScheme.error : colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
               ),
             ),
@@ -193,7 +196,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ========== بقیه صفحات (تنظیمات، ادمین، مدیریت کانفیگ) بدون تغییر ==========
+// ========== صفحه تنظیمات ==========
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -293,6 +296,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+// ========== صفحه تغییر رمز عبور ==========
 class ChangePasswordPage extends StatefulWidget {
   const ChangePasswordPage({super.key});
 
@@ -394,6 +398,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 }
 
+// ========== صفحه ادمین (با ورود) ==========
 class AdminWrapper extends StatefulWidget {
   const AdminWrapper({super.key});
 
@@ -422,6 +427,7 @@ class _AdminWrapperState extends State<AdminWrapper> {
   }
 }
 
+// ========== صفحه ورود ادمین ==========
 class AdminLoginPage extends StatefulWidget {
   final VoidCallback onLogin;
 
@@ -508,6 +514,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   }
 }
 
+// ========== صفحه مدیریت ادمین ==========
 class AdminPage extends StatelessWidget {
   final VoidCallback onLogout;
 
@@ -601,6 +608,7 @@ class AdminPage extends StatelessWidget {
   }
 }
 
+// ========== صفحه مدیریت کانفیگ‌ها (فقط ادمین) ==========
 class ConfigManagementPage extends StatefulWidget {
   const ConfigManagementPage({super.key});
 
@@ -609,11 +617,34 @@ class ConfigManagementPage extends StatefulWidget {
 }
 
 class _ConfigManagementPageState extends State<ConfigManagementPage> {
-  List<Map<String, String>> _configs = [
-    {'name': 'سرور ایران', 'address': 'ir.example.com', 'status': 'فعال'},
-    {'name': 'سرور آلمان', 'address': 'de.example.com', 'status': 'غیرفعال'},
-    {'name': 'سرور آمریکا', 'address': 'us.example.com', 'status': 'فعال'},
-  ];
+  List<Map<String, String>> _configs = [];
+  String? _activeConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final configs = await ConfigService.loadConfigs();
+    final active = await ConfigService.loadActiveConfig();
+    setState(() {
+      _configs = configs;
+      _activeConfig = active;
+    });
+  }
+
+  Future<void> _saveData() async {
+    await ConfigService.saveConfigs(_configs);
+  }
+
+  void _setActiveConfig(String? config) async {
+    await ConfigService.saveActiveConfig(config);
+    setState(() {
+      _activeConfig = config;
+    });
+  }
 
   String? _convertVlessToJson(String link) {
     if (!link.startsWith('vless://')) return null;
@@ -722,7 +753,7 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
             child: const Text('انصراف'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               final link = linkController.text.trim();
               if (link.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -763,6 +794,7 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
                   'status': 'غیرفعال',
                 });
               });
+              await _saveData();
 
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -814,6 +846,7 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
                       'status': 'غیرفعال',
                     });
                   });
+                  _saveData();
                   Navigator.pop(context);
                 }
               },
@@ -825,10 +858,25 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
     );
   }
 
-  void _deleteConfig(int index) {
+  void _deleteConfig(int index) async {
     setState(() {
       _configs.removeAt(index);
     });
+    await _saveData();
+    if (_activeConfig != null && !_configs.any((c) => c['address'] == _activeConfig)) {
+      await ConfigService.saveActiveConfig(null);
+      setState(() {
+        _activeConfig = null;
+      });
+    }
+  }
+
+  void _toggleActive(String? address) {
+    if (_activeConfig == address) {
+      _setActiveConfig(null);
+    } else {
+      _setActiveConfig(address);
+    }
   }
 
   @override
@@ -862,10 +910,15 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
               itemBuilder: (context, index) {
                 final config = _configs[index];
                 final isJson = config['address']?.startsWith('{') ?? false;
+                final isActive = _activeConfig == config['address'];
+
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: ListTile(
-                    leading: const Icon(Icons.vpn_key),
+                    leading: Icon(
+                      isActive ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                      color: isActive ? Colors.green : Colors.grey,
+                    ),
                     title: Text(config['name'] ?? 'بدون نام'),
                     subtitle: Text(
                       isJson
@@ -880,13 +933,11 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: config['status'] == 'فعال'
-                                ? Colors.green
-                                : Colors.grey,
+                            color: isActive ? Colors.green : Colors.grey,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            config['status'] ?? 'نامشخص',
+                            isActive ? 'فعال' : 'غیرفعال',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -894,6 +945,11 @@ class _ConfigManagementPageState extends State<ConfigManagementPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.play_arrow, color: Colors.blue),
+                          onPressed: () => _toggleActive(config['address']),
+                          tooltip: 'فعال کردن',
+                        ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
                           onPressed: () => _deleteConfig(index),
