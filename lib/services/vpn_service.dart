@@ -10,6 +10,11 @@ class VpnService {
 
   bool get isConnected => _isConnected;
 
+  // متد initialize برای سازگاری با main.dart
+  Future<void> initialize() async {
+    print('✅ V2Ray مقداردهی اولیه شد');
+  }
+
   Future<void> startVpn(String config) async {
     try {
       await _v2ray.startV2Ray(
