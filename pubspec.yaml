@@ -1,7 +1,7 @@
 name: v2ray_stk
 description: V2RAY stk - VPN Client
 publish_to: 'none'
-version: 1.0.31+1
+version: 1.0.32+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

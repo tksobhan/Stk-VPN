@@ -106,6 +106,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initializeVpn() async {
     try {
       await _vpnService.initialize();
+      await _vpnService.refreshStatus();
     } catch (e) {
       print('خطا در مقداردهی اولیه VPN: $e');
     } finally {
@@ -122,6 +123,7 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoading = true);
     try {
       await _vpnService.toggleVpn(_sampleConfig);
+      await _vpnService.refreshStatus();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا: ${e.toString()}')),
@@ -129,12 +131,6 @@ class _HomePageState extends State<HomePage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _vpnService.dispose();
-    super.dispose();
   }
 
   @override
