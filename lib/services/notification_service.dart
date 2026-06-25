@@ -20,7 +20,6 @@ class NotificationService {
     await _notifications.initialize(settings);
   }
 
-  // نمایش نوتیفیکیشن ساده
   Future<void> showNotification(String title, String body) async {
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -45,7 +44,6 @@ class NotificationService {
     );
   }
 
-  // نمایش نوتیفیکیشن دائمی (مثل VPN)
   Future<void> showPersistentNotification(String title, String body) async {
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -69,7 +67,6 @@ class NotificationService {
     );
   }
 
-  // حذف نوتیفیکیشن
   Future<void> cancelAll() async {
     await _notifications.cancelAll();
   }

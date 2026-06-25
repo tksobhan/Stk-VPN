@@ -1,4 +1,4 @@
-import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:flutter_v2ray_plus/flutter_v2ray_plus.dart';
 import 'package:v2ray_stk/services/notification_service.dart';
 
 class VpnService {
@@ -6,7 +6,7 @@ class VpnService {
   factory VpnService() => _instance;
   VpnService._internal();
 
-  final V2Ray _v2ray = V2Ray();
+  final V2RayPlus _v2ray = V2RayPlus();
   bool _isConnected = false;
   final NotificationService _notif = NotificationService();
 
@@ -14,7 +14,9 @@ class VpnService {
 
   Future<void> initialize() async {
     await _notif.init();
-    print('✅ V2Ray و نوتیفیکیشن مقداردهی اولیه شدند');
+    // تنظیمات اولیه V2RayPlus
+    await _v2ray.initialize();
+    print('✅ V2RayPlus و نوتیفیکیشن مقداردهی اولیه شدند');
   }
 
   Future<void> startVpn(String config) async {
@@ -29,9 +31,9 @@ class VpnService {
         '✅ VPN وصل شد',
         'در حال حفاظت از اتصال شما',
       );
-      print('✅ V2Ray متصل شد');
+      print('✅ V2RayPlus متصل شد');
     } catch (e) {
-      print('❌ خطا در اتصال V2Ray: $e');
+      print('❌ خطا در اتصال V2RayPlus: $e');
       _isConnected = false;
       rethrow;
     }
@@ -46,9 +48,9 @@ class VpnService {
         '❌ VPN قطع شد',
         'اتصال VPN قطع گردید',
       );
-      print('❌ V2Ray قطع شد');
+      print('❌ V2RayPlus قطع شد');
     } catch (e) {
-      print('❌ خطا در قطع V2Ray: $e');
+      print('❌ خطا در قطع V2RayPlus: $e');
       rethrow;
     }
   }
