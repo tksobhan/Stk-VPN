@@ -51,10 +51,11 @@ class _HomePageState extends State<HomePage> {
   "outbounds": [
     {
       "protocol": "vless",
+      "tag": "proxy",
       "settings": {
         "vnext": [
           {
-            "address": "104.24.75.124",
+            "address": "104.20.47.114",
             "port": 2083,
             "users": [
               {
@@ -84,7 +85,7 @@ class _HomePageState extends State<HomePage> {
   "route": {
     "rules": [
       {
-        "outbound": "vless",
+        "outbound": "proxy",
         "network": ["tcp", "udp"]
       }
     ]
