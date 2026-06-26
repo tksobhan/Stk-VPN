@@ -30,7 +30,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ✅ سرویس VPN با foregroundServiceType="dataSync" (دقیقاً مطابق خواسته شما) -->
+        <!-- ✅ [7] ANDROID MANIFEST FIX: dataSync -->
         <service
             android:name=".CoreService"
             android:permission="android.permission.BIND_VPN_SERVICE"

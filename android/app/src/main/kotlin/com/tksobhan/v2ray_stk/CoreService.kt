@@ -4,14 +4,16 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.io.File
-import kotlin.concurrent.thread
+import java.lang.Process
 
 class CoreService : VpnService() {
 
@@ -20,8 +22,8 @@ class CoreService : VpnService() {
         private const val NOTIFICATION_ID = 1001
     }
 
-    // ✅ استفاده از java.lang.Process (نه android.os.Process)
-    private var currentProcess: java.lang.Process? = null
+    // ✅ [2] PROCESS TYPE FIX: java.lang.Process
+    private var currentProcess: Process? = null
     private val watchdog = Handler(Looper.getMainLooper())
 
     override fun onStartCommand(
@@ -82,6 +84,18 @@ class CoreService : VpnService() {
         )
     }
 
+    // ✅ [5] VPN TUN FIX
+    private fun startVpn(): ParcelFileDescriptor? {
+        return Builder()
+            .setSession("STK-VPN")
+            .addAddress("10.10.0.2", 32)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("1.1.1.1")
+            .setMtu(1500)
+            .establish()
+    }
+
+    // ✅ [6] BINARY EXECUTION FIX + TUN
     private fun startSingBox(config: String) {
 
         stopCore()
@@ -93,7 +107,15 @@ class CoreService : VpnService() {
             return
         }
 
-        // ✅ استفاده از java.lang.Process
+        // ✅ [6] setExecutable true
+        if (!binary.canExecute()) {
+            binary.setExecutable(true)
+        }
+
+        // ✅ TUN را قبل از اجرا بساز
+        val tunFd = startVpn()
+        Log.d("VPN", "TUN fd: ${tunFd?.fd}")
+
         currentProcess = Runtime.getRuntime().exec(
             arrayOf(
                 binary.absolutePath,
@@ -103,9 +125,11 @@ class CoreService : VpnService() {
             )
         )
 
-        readLogs()
+        readProcessOutput()
+        Log.d("VPN", "sing-box started with TUN")
     }
 
+    // ✅ [6] BINARY EXECUTION FIX (xray)
     private fun startXray(config: String) {
 
         stopCore()
@@ -117,6 +141,10 @@ class CoreService : VpnService() {
             return
         }
 
+        if (!binary.canExecute()) {
+            binary.setExecutable(true)
+        }
+
         currentProcess = Runtime.getRuntime().exec(
             arrayOf(
                 binary.absolutePath,
@@ -125,32 +153,35 @@ class CoreService : VpnService() {
             )
         )
 
-        readLogs()
+        readProcessOutput()
+        Log.d("VPN", "xray started")
     }
 
-    // ✅ اصلاح readLogs با استفاده از متغیر صریح برای خطوط
-    private fun readLogs() {
+    // ✅ [4] PROCESS OUTPUT FIX (FULL REPLACE)
+    private fun readProcessOutput() {
+        val proc = currentProcess ?: return
 
-        currentProcess?.let { proc ->
-
-            thread {
-                proc.inputStream
-                    .bufferedReader()
-                    .forEachLine { line ->
-                        Log.d("VPN", line)
-                        MainActivity.logSink?.success(line)
-                    }
+        Thread {
+            try {
+                proc.inputStream.bufferedReader().forEachLine { line ->
+                    Log.d("CORE_OUT", line)
+                    MainActivity.logSink?.success(line)
+                }
+            } catch (e: Exception) {
+                Log.e("CORE", "inputStream error", e)
             }
+        }.start()
 
-            thread {
-                proc.errorStream
-                    .bufferedReader()
-                    .forEachLine { line ->
-                        Log.e("VPN", line)
-                        MainActivity.logSink?.success("[ERROR] $line")
-                    }
+        Thread {
+            try {
+                proc.errorStream.bufferedReader().forEachLine { line ->
+                    Log.e("CORE_ERR", line)
+                    MainActivity.logSink?.success("[ERR] $line")
+                }
+            } catch (e: Exception) {
+                Log.e("CORE", "errorStream error", e)
             }
-        }
+        }.start()
     }
 
     private fun startWatchdog() {
@@ -163,10 +194,7 @@ class CoreService : VpnService() {
                     try {
 
                         if (currentProcess == null) {
-                            Log.e(
-                                "VPN",
-                                "core crashed"
-                            )
+                            Log.e("VPN", "core crashed")
                         }
 
                     } finally {
@@ -182,10 +210,18 @@ class CoreService : VpnService() {
         )
     }
 
-    // ✅ استفاده از destroy() روی java.lang.Process
+    // ✅ [3] DESTROY FIX: destroyForcibly()
     private fun stopCore() {
-        currentProcess?.destroy()
+        currentProcess?.destroyForcibly()
         currentProcess = null
+    }
+
+    // ✅ [9] TRAFFIC FIX: استفاده از UID خود برنامه
+    private fun getTrafficStats(): String {
+        val uid = android.os.Process.myUid()
+        val rx = TrafficStats.getUidRxBytes(uid)
+        val tx = TrafficStats.getUidTxBytes(uid)
+        return "$tx|$rx"
     }
 
     override fun onDestroy() {
