@@ -20,6 +20,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _subController = TextEditingController();
   String _logs = '';
   String _traffic = '0 KB/s / 0 KB/s';
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -40,37 +41,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _listenToLogs() {
     CoreController.getLogs().listen((log) {
-      setState(() {
-        _logs = log;
-      });
+      if (mounted) {
+        setState(() {
+          _logs = log;
+        });
+      }
     });
   }
 
   void _listenToTraffic() {
     CoreController.getTraffic().listen((data) {
-      setState(() {
-        _traffic = data;
-      });
+      if (mounted) {
+        setState(() {
+          _traffic = data;
+        });
+      }
     });
   }
 
-  // ✅ تبدیل VMESS
   String? _convertVmessToJson(String link) {
     try {
       final base64 = link.substring(8);
       final decoded = utf8.decode(base64Decode(base64));
       final json = jsonDecode(decoded);
+      if (json['add'] == null || json['id'] == null || json['port'] == null) return null;
       return jsonEncode({
         "type": "vmess",
         "tag": "proxy",
         "settings": {
           "vnext": [{
             "address": json['add'],
-            "port": int.parse(json['port']),
+            "port": int.parse(json['port'].toString()),
             "users": [{
               "id": json['id'],
               "security": json['s'] ?? "auto",
-              "alterId": int.parse(json['aid'] ?? "0")
+              "alterId": int.tryParse(json['aid']?.toString() ?? "0") ?? 0
             }]
           }]
         },
@@ -91,16 +96,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ تبدیل Trojan
   String? _convertTrojanToJson(String link) {
     try {
       final raw = link.substring(9);
       final atIndex = raw.indexOf('@');
       if (atIndex == -1) return null;
       final password = raw.substring(0, atIndex);
+      if (password.isEmpty) return null;
       final rest = raw.substring(atIndex + 1);
       final hostPort = rest.split('?')[0];
       final hostParts = hostPort.split(':');
+      if (hostParts.length < 2) return null;
       final address = hostParts[0];
       final port = int.tryParse(hostParts[1]) ?? 443;
       return jsonEncode({
@@ -128,7 +134,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ تبدیل Shadowsocks
   String? _convertShadowsocksToJson(String link) {
     try {
       final base64 = link.substring(5);
@@ -139,8 +144,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (methodPass.length != 2) return null;
       final method = methodPass[0];
       final password = methodPass[1];
+      if (method.isEmpty || password.isEmpty) return null;
       final serverParts = parts[1].split(':');
-      if (serverParts.length != 2) return null;
+      if (serverParts.length < 2) return null;
       final address = serverParts[0];
       final port = int.tryParse(serverParts[1]) ?? 443;
       return jsonEncode({
@@ -160,17 +166,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ تبدیل VLESS با شرطی TLS (FIX 2)
   String? _convertVlessToJson(String link) {
     try {
       final raw = link.substring(8);
       final atIndex = raw.indexOf('@');
       if (atIndex == -1) return null;
       final userPart = raw.substring(0, atIndex);
+      if (userPart.isEmpty) return null;
       final rest = raw.substring(atIndex + 1);
       final hostPort = rest.split('?')[0];
       final query = rest.contains('?') ? rest.split('?')[1] : '';
       final hostParts = hostPort.split(':');
+      if (hostParts.length < 2) return null;
       final address = hostParts[0];
       final port = int.tryParse(hostParts[1]) ?? 443;
 
@@ -192,7 +199,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final fp = params['fp'] ?? 'chrome';
       final type = params['type'] ?? 'ws';
 
-      // ✅ شرطی: TLS فقط در صورت نیاز
       final streamSettings = <String, dynamic>{};
       streamSettings["network"] = type;
 
@@ -251,7 +257,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ تبدیل هر نوع لینک
   String? _convertAnyToJson(String link) {
     if (link.startsWith('vless://')) return _convertVlessToJson(link);
     if (link.startsWith('vmess://')) return _convertVmessToJson(link);
@@ -293,15 +298,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ? link.split('@')[1].split('?')[0]
                   : 'unknown';
               final name = link.split('://')[0].toUpperCase() + ' - ' + host;
+              // ✅ FIX 2: ذخیره با کلید 'config'
               setState(() {
                 configs.add({
                   'name': name,
-                  'address': json,
+                  'config': json,
                   'status': 'غیرفعال',
                 });
               });
               await ConfigService.saveConfigs(configs);
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
               _linkController.clear();
             },
             child: const Text('افزودن'),
@@ -344,18 +350,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     setState(() {
                       configs.add({
                         'name': name,
-                        'address': json,
+                        'config': json,
                         'status': 'غیرفعال',
                       });
                     });
                     await ConfigService.saveConfigs(configs);
                   }
                 }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('✅ ${nodes.length} کانفیگ اضافه شد')),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('✅ ${nodes.length} کانفیگ اضافه شد')),
+                  );
+                }
               }
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
             },
             child: const Text('دریافت'),
           ),
@@ -364,16 +372,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _setActive(String address) async {
-    await ConfigService.saveActiveConfig(address);
-    setState(() {
-      activeConfig = address;
-      for (var c in configs) {
-        c['status'] = (c['address'] == address) ? 'فعال' : 'غیرفعال';
-      }
-    });
+  // ✅ FIX 2: اصلاح _setActive با کلید 'config'
+  void _setActive(String configJson) async {
+    await ConfigService.saveActiveConfig(configJson);
+    if (mounted) {
+      setState(() {
+        activeConfig = configJson;
+        for (var c in configs) {
+          c['status'] = (c['config'] == configJson) ? 'فعال' : 'غیرفعال';
+        }
+      });
+    }
   }
 
+  // ✅ FIX 2: اصلاح _connect با result == "Started"
   Future<void> _connect() async {
     if (activeConfig == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -381,38 +393,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       return;
     }
+
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
     try {
       final result = await CoreController.startCore(coreType, activeConfig!);
-      if (result.contains("Started")) {
-        setState(() => status = 'CONNECTED');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ VPN متصل شد')),
-        );
-      } else {
-        setState(() => status = 'ERROR');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطا: $result')),
-        );
+      if (mounted) {
+        if (result == "Started") {
+          setState(() => status = 'CONNECTED');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ VPN متصل شد')),
+          );
+        } else {
+          setState(() => status = 'ERROR');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ خطا: $result')),
+          );
+        }
       }
     } catch (e) {
-      setState(() => status = 'ERROR');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ خطا: $e')),
-      );
+      if (mounted) {
+        setState(() => status = 'ERROR');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطا: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _disconnect() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
     try {
       final result = await CoreController.stopCore();
-      setState(() => status = 'DISCONNECTED');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ VPN قطع شد')),
-      );
+      if (mounted) {
+        setState(() => status = 'DISCONNECTED');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ VPN قطع شد')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ خطا: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطا: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -460,15 +495,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton(
-                  onPressed: _connect,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: const Text('اتصال'),
+                  onPressed: _isLoading ? null : _connect,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    disabledBackgroundColor: Colors.green.shade300,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('اتصال'),
                 ),
                 const SizedBox(width: 16),
                 ElevatedButton(
-                  onPressed: _disconnect,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  child: const Text('قطع اتصال'),
+                  onPressed: _isLoading ? null : _disconnect,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    disabledBackgroundColor: Colors.red.shade300,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('قطع اتصال'),
                 ),
               ],
             ),
@@ -493,7 +552,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 itemCount: configs.length,
                 itemBuilder: (context, index) {
                   final config = configs[index];
-                  final isActive = activeConfig == config['address'];
+                  final isActive = activeConfig == config['config'];
                   return Card(
                     child: ListTile(
                       leading: Icon(
@@ -502,13 +561,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       title: Text(config['name'] ?? 'بدون نام'),
                       subtitle: Text(
-                        'طول: ${config['address']?.length ?? 0}',
+                        'طول: ${config['config']?.length ?? 0}',
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       trailing: isActive
                           ? const Chip(label: Text('فعال'), backgroundColor: Colors.green)
                           : const Chip(label: Text('غیرفعال'), backgroundColor: Colors.grey),
-                      onTap: () => _setActive(config['address']!),
+                      onTap: () => _setActive(config['config']!),
                     ),
                   );
                 },

@@ -22,8 +22,8 @@ class CoreService : VpnService() {
         private const val NOTIFICATION_ID = 1001
     }
 
-    // ✅ [2] PROCESS TYPE FIX: java.lang.Process
     private var currentProcess: Process? = null
+    private var vpnInterface: ParcelFileDescriptor? = null
     private val watchdog = Handler(Looper.getMainLooper())
 
     override fun onStartCommand(
@@ -42,6 +42,7 @@ class CoreService : VpnService() {
             return START_STICKY
         }
 
+        // ✅ FIX 1: ذخیره کانفیگ در فایل و ارسال مسیر
         val configFile = File(filesDir, "config.json")
         configFile.writeText(config)
 
@@ -58,13 +59,11 @@ class CoreService : VpnService() {
     private fun startVpnForeground() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "VPN PRO",
                 NotificationManager.IMPORTANCE_LOW
             )
-
             getSystemService(NotificationManager::class.java)
                 .createNotificationChannel(channel)
         }
@@ -73,32 +72,37 @@ class CoreService : VpnService() {
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("VPN Running")
                 .setContentText("Connected")
-                .setSmallIcon(
-                    android.R.drawable.stat_sys_download_done
-                )
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .build()
 
-        startForeground(
-            NOTIFICATION_ID,
-            notification
-        )
+        startForeground(NOTIFICATION_ID, notification)
     }
 
-    // ✅ [5] VPN TUN FIX
     private fun startVpn(): ParcelFileDescriptor? {
         return Builder()
             .setSession("STK-VPN")
-            .addAddress("10.10.0.2", 32)
+            .addAddress("172.19.0.1", 30)
             .addRoute("0.0.0.0", 0)
             .addDnsServer("1.1.1.1")
             .setMtu(1500)
             .establish()
     }
 
-    // ✅ [6] BINARY EXECUTION FIX + TUN
-    private fun startSingBox(config: String) {
+    private fun resetVpn() {
+        vpnInterface?.close()
+        vpnInterface = null
+        try {
+            Thread.sleep(300)
+        } catch (_: InterruptedException) {}
+        vpnInterface = startVpn()
+        Log.d("VPN", "TUN reset done (fd: ${vpnInterface?.fd})")
+    }
+
+    // ✅ FIX 1: ارسال مسیر فایل به sing-box
+    private fun startSingBox(configPath: String) {
 
         stopCore()
+        resetVpn()
 
         val binary = File(filesDir, "sing-box")
 
@@ -107,30 +111,25 @@ class CoreService : VpnService() {
             return
         }
 
-        // ✅ [6] setExecutable true
         if (!binary.canExecute()) {
             binary.setExecutable(true)
         }
-
-        // ✅ TUN را قبل از اجرا بساز
-        val tunFd = startVpn()
-        Log.d("VPN", "TUN fd: ${tunFd?.fd}")
 
         currentProcess = Runtime.getRuntime().exec(
             arrayOf(
                 binary.absolutePath,
                 "run",
                 "-c",
-                config
+                configPath
             )
         )
 
         readProcessOutput()
-        Log.d("VPN", "sing-box started with TUN")
+        Log.d("VPN", "sing-box started with config file: $configPath")
     }
 
-    // ✅ [6] BINARY EXECUTION FIX (xray)
-    private fun startXray(config: String) {
+    // ✅ FIX 1: ارسال مسیر فایل به xray
+    private fun startXray(configPath: String) {
 
         stopCore()
 
@@ -149,15 +148,14 @@ class CoreService : VpnService() {
             arrayOf(
                 binary.absolutePath,
                 "-config",
-                config
+                configPath
             )
         )
 
         readProcessOutput()
-        Log.d("VPN", "xray started")
+        Log.d("VPN", "xray started with config file: $configPath")
     }
 
-    // ✅ [4] PROCESS OUTPUT FIX (FULL REPLACE)
     private fun readProcessOutput() {
         val proc = currentProcess ?: return
 
@@ -210,13 +208,18 @@ class CoreService : VpnService() {
         )
     }
 
-    // ✅ [3] DESTROY FIX: destroyForcibly()
     private fun stopCore() {
         currentProcess?.destroyForcibly()
         currentProcess = null
     }
 
-    // ✅ [9] TRAFFIC FIX: استفاده از UID خود برنامه
+    // ✅ FIX 3: اعتبارسنجی باینری (برای CoreInstaller)
+    private fun isValidBinary(file: File): Boolean {
+        return file.exists() &&
+                file.length() > 2_000_000 &&
+                file.canExecute()
+    }
+
     private fun getTrafficStats(): String {
         val uid = android.os.Process.myUid()
         val rx = TrafficStats.getUidRxBytes(uid)
@@ -227,10 +230,10 @@ class CoreService : VpnService() {
     override fun onDestroy() {
 
         stopCore()
+        vpnInterface?.close()
+        vpnInterface = null
 
-        watchdog.removeCallbacksAndMessages(
-            null
-        )
+        watchdog.removeCallbacksAndMessages(null)
 
         super.onDestroy()
     }

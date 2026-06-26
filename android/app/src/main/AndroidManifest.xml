@@ -30,7 +30,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ✅ [7] ANDROID MANIFEST FIX: dataSync -->
         <service
             android:name=".CoreService"
             android:permission="android.permission.BIND_VPN_SERVICE"

@@ -62,7 +62,6 @@ class CoreController {
     }
   }
 
-  // ✅ ایراد ۱: توابع getLogs و getTraffic
   static Stream<String> getLogs() {
     return _logChannel.receiveBroadcastStream().map((event) => event.toString());
   }

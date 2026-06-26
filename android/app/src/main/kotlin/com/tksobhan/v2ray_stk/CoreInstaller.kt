@@ -35,6 +35,7 @@ class CoreInstaller(private val context: Context) {
 
     fun installIfNeeded(name: String): Boolean {
         val binary = File(context.filesDir, name)
+
         if (binary.exists() && binary.canExecute()) {
             Log.d("INSTALLER", "✅ $name از قبل وجود دارد")
             return true
@@ -48,38 +49,70 @@ class CoreInstaller(private val context: Context) {
             else -> return false
         }
 
-        return try {
-            val archive = File(context.filesDir, "$name.archive")
-            downloadFile(url, archive)
+        var retries = 3
+        var success = false
 
-            if (name == "sing-box") {
-                extractTarGz(archive, context.filesDir)
-            } else {
-                extractZip(archive, context.filesDir)
-            }
+        while (retries > 0 && !success) {
+            try {
+                val archive = File(context.filesDir, "$name.archive")
+                downloadFile(url, archive)
 
-            val extracted = findExtractedBinary(name)
-            if (extracted != null && extracted.renameTo(binary)) {
-                binary.setExecutable(true, false)
-                archive.delete()
-                Log.d("INSTALLER", "✅ $name نصب شد")
-                true
-            } else {
-                false
+                if (archive.length() < 5_000_000) {
+                    Log.e("INSTALLER", "❌ حجم فایل دانلود شده نامعتبر است")
+                    archive.delete()
+                    retries--
+                    continue
+                }
+
+                if (name == "sing-box") {
+                    extractTarGz(archive, context.filesDir)
+                } else {
+                    extractZip(archive, context.filesDir)
+                }
+
+                val extracted = findExtractedBinary(name)
+
+                // ✅ FIX 3: اعتبارسنجی باینری
+                if (extracted != null && isValidBinary(extracted)) {
+
+                    if (binary.exists()) {
+                        binary.delete()
+                    }
+
+                    extracted.renameTo(binary)
+                    binary.setExecutable(true, false)
+                    archive.delete()
+
+                    Log.d("INSTALLER", "✅ $name نصب شد (ARM64)")
+                    success = true
+
+                } else {
+                    Log.e("INSTALLER", "❌ باینری نامعتبر، تلاش مجدد...")
+                    retries--
+                }
+
+            } catch (e: Exception) {
+                Log.e("INSTALLER", "❌ تلاش ${4 - retries} شکست خورد: ${e.message}")
+                retries--
             }
-        } catch (e: Exception) {
-            Log.e("INSTALLER", "❌ نصب $name شکست خورد: ${e.message}")
-            false
         }
+
+        return success
     }
 
     private fun downloadFile(url: String, output: File) {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = true
+        connection.connectTimeout = 15000
+        connection.readTimeout = 30000
         connection.connect()
         connection.inputStream.use { input ->
             FileOutputStream(output).use { out ->
-                input.copyTo(out)
+                val buffer = ByteArray(8 * 1024)
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    out.write(buffer, 0, bytesRead)
+                }
             }
         }
     }
@@ -87,6 +120,7 @@ class CoreInstaller(private val context: Context) {
     private fun extractTarGz(archive: File, outputDir: File) {
         TarArchiveInputStream(GzipCompressorInputStream(FileInputStream(archive))).use { tar ->
             var entry = tar.nextEntry
+            val buffer = ByteArray(8 * 1024)
             while (entry != null) {
                 val outFile = File(outputDir, entry.name)
                 if (entry.isDirectory) {
@@ -94,7 +128,10 @@ class CoreInstaller(private val context: Context) {
                 } else {
                     outFile.parentFile?.mkdirs()
                     FileOutputStream(outFile).use { out ->
-                        tar.copyTo(out)
+                        var bytesRead: Int
+                        while (tar.read(buffer).also { bytesRead = it } != -1) {
+                            out.write(buffer, 0, bytesRead)
+                        }
                     }
                 }
                 entry = tar.nextEntry
@@ -106,6 +143,7 @@ class CoreInstaller(private val context: Context) {
     private fun extractZip(archive: File, outputDir: File) {
         ZipInputStream(FileInputStream(archive)).use { zis ->
             var entry = zis.nextEntry
+            val buffer = ByteArray(8 * 1024)
             while (entry != null) {
                 val outFile = File(outputDir, entry.name)
                 if (entry.isDirectory) {
@@ -113,7 +151,10 @@ class CoreInstaller(private val context: Context) {
                 } else {
                     outFile.parentFile?.mkdirs()
                     FileOutputStream(outFile).use { out ->
-                        zis.copyTo(out)
+                        var bytesRead: Int
+                        while (zis.read(buffer).also { bytesRead = it } != -1) {
+                            out.write(buffer, 0, bytesRead)
+                        }
                     }
                 }
                 entry = zis.nextEntry
@@ -122,10 +163,16 @@ class CoreInstaller(private val context: Context) {
         archive.delete()
     }
 
-    // ✅ اصلاح شده: پیدا کردن باینری استخراج شده
     private fun findExtractedBinary(name: String): File? {
         return context.filesDir.listFiles()?.firstOrNull {
             it.isFile && it.name.contains(name) && !it.name.endsWith(".archive")
         }
+    }
+
+    // ✅ FIX 3: اعتبارسنجی باینری
+    private fun isValidBinary(file: File): Boolean {
+        return file.exists() &&
+                file.length() > 2_000_000 &&
+                file.canExecute()
     }
 }
