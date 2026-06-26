@@ -3,6 +3,7 @@ package com.tksobhan.v2ray_stk
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.*
 import android.system.OsConstants
@@ -20,7 +21,6 @@ class CoreService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var currentProcess: Process? = null
-    private var retryCount = 0
     private var trafficTimer: Timer? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -52,7 +52,6 @@ class CoreService : VpnService() {
 
         protectSockets()
         startTrafficMonitor()
-        readProcessOutput()
 
         return START_STICKY
     }
@@ -108,12 +107,13 @@ class CoreService : VpnService() {
         vpnInterface = startVpn()
 
         val bin = File(filesDir, "sing-box")
-        if (!bin.exists()) {
-            Log.e("CORE_SERVICE", "sing-box binary missing")
-            return
-        }
+        if (!bin.exists()) return
 
-        currentProcess = Runtime.getRuntime().exec(arrayOf(bin.absolutePath, "run", "-c", path))
+        currentProcess = Runtime.getRuntime().exec(
+            arrayOf(bin.absolutePath, "run", "-c", path)
+        )
+
+        readProcessOutput()
         Log.d("CORE_SERVICE", "sing-box started")
     }
 
@@ -121,12 +121,13 @@ class CoreService : VpnService() {
         stopCore()
 
         val bin = File(filesDir, "xray")
-        if (!bin.exists()) {
-            Log.e("CORE_SERVICE", "xray binary missing")
-            return
-        }
+        if (!bin.exists()) return
 
-        currentProcess = Runtime.getRuntime().exec(arrayOf(bin.absolutePath, "-config", path))
+        currentProcess = Runtime.getRuntime().exec(
+            arrayOf(bin.absolutePath, "-config", path)
+        )
+
+        readProcessOutput()
         Log.d("CORE_SERVICE", "xray started")
     }
 
@@ -137,12 +138,14 @@ class CoreService : VpnService() {
 
     private fun readProcessOutput() {
         currentProcess?.let { proc ->
+
             thread {
                 proc.inputStream.bufferedReader().forEachLine {
                     Log.d("CORE_OUT", it)
                     MainActivity.logSink?.success(it)
                 }
             }
+
             thread {
                 proc.errorStream.bufferedReader().forEachLine {
                     Log.e("CORE_ERR", it)
@@ -156,8 +159,8 @@ class CoreService : VpnService() {
         trafficTimer = Timer()
         trafficTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
-                val rx = android.net.TrafficStats.getTotalRxBytes()
-                val tx = android.net.TrafficStats.getTotalTxBytes()
+                val rx = TrafficStats.getTotalRxBytes()
+                val tx = TrafficStats.getTotalTxBytes()
                 MainActivity.trafficSink?.success("$tx|$rx")
             }
         }, 0, 1000)
