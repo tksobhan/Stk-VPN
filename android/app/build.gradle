@@ -38,3 +38,9 @@ flutter {
 dependencies {
     implementation 'org.apache.commons:commons-compress:1.26.0'
 }
+dependencies {
+    implementation 'org.apache.commons:commons-compress:1.26.0'
+}
+dependencies {
+    implementation 'org.apache.commons:commons-compress:1.26.0'
+}

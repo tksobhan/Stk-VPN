@@ -84,7 +84,6 @@ class CoreInstaller(private val context: Context) {
         }
     }
 
-    // ✅ ایراد ۶: استخراج با کتابخانه compress (بدون نیاز به tar)
     private fun extractTarGz(archive: File, outputDir: File) {
         TarArchiveInputStream(GzipCompressorInputStream(FileInputStream(archive))).use { tar ->
             var entry = tar.nextEntry
@@ -123,12 +122,10 @@ class CoreInstaller(private val context: Context) {
         archive.delete()
     }
 
+    // ✅ اصلاح شده: پیدا کردن باینری استخراج شده
     private fun findExtractedBinary(name: String): File? {
-        context.filesDir.walkTopDown().forEach {
-            if (it.isFile && it.name.contains(name) && !it.name.endsWith(".archive")) {
-                return it
-            }
+        return context.filesDir.listFiles()?.firstOrNull {
+            it.isFile && it.name.contains(name) && !it.name.endsWith(".archive")
         }
-        return null
     }
 }

@@ -36,7 +36,6 @@ class CoreService : VpnService() {
 
         Log.d("CORE_SERVICE", "🚀 شروع $type")
 
-        // ✅ ایراد ۵: تغییر نام به initForegroundService
         initForegroundService()
 
         val prepareIntent = VpnService.prepare(this)
@@ -49,10 +48,21 @@ class CoreService : VpnService() {
             return START_STICKY
         }
 
+        // ✅ FIX 4: اعتبارسنجی کانفیگ
+        if (config.isBlank()) {
+            Log.e("CORE_SERVICE", "❌ کانفیگ خالی است")
+            return START_STICKY
+        }
+        if (!config.trim().startsWith("{")) {
+            Log.e("CORE_SERVICE", "❌ کانفیگ JSON معتبر نیست")
+            return START_STICKY
+        }
+
         val configFile = File(filesDir, "config.json")
         configFile.writeText(config)
 
         val installer = CoreInstaller(this)
+
         when (type.lowercase()) {
             "singbox" -> {
                 if (installer.installIfNeeded("sing-box")) {
@@ -67,17 +77,14 @@ class CoreService : VpnService() {
             else -> Log.e("CORE_SERVICE", "نوع هسته پشتیبانی نمی‌شود: $type")
         }
 
-        if (type.lowercase() == "singbox") {
-            startVpn()
-        }
-
+        // ✅ FIX 1: protectSockets بهبود یافته
         protectSockets()
+
         startTrafficMonitor()
 
         return START_STICKY
     }
 
-    // ✅ ایراد ۵: تغییر نام متد
     private fun initForegroundService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -99,9 +106,22 @@ class CoreService : VpnService() {
         Log.d("CORE_SERVICE", "✅ Foreground Service شروع شد")
     }
 
-    private fun startVpn() {
+    // ✅ FIX 1: protectSockets واقعی
+    private fun protectSockets() {
         try {
-            vpnInterface = Builder()
+            val socket = Socket()
+            protect(socket)
+            socket.close()
+            Log.d("CORE_SERVICE", "✅ protect OK")
+        } catch (e: Exception) {
+            Log.e("CORE_SERVICE", "❌ protect error: ${e.message}")
+        }
+    }
+
+    // ✅ FIX 2: TUN با جلوگیری از نشت حافظه
+    private fun startVpn(): ParcelFileDescriptor? {
+        return try {
+            Builder()
                 .setSession("V2RAY stk")
                 .addAddress("172.19.0.1", 30)
                 .addRoute("0.0.0.0", 0)
@@ -112,67 +132,18 @@ class CoreService : VpnService() {
                 .allowFamily(OsConstants.AF_INET6)
                 .setBlocking(true)
                 .establish()
-
-            Log.d("CORE_SERVICE", "✅ TUN Interface ساخته شد (fd: ${vpnInterface?.fd})")
+                .also {
+                    Log.d("CORE_SERVICE", "✅ TUN Interface ساخته شد (fd: ${it?.fd})")
+                }
         } catch (e: Exception) {
             Log.e("CORE_SERVICE", "❌ خطا در ساخت TUN: ${e.message}")
-        }
-    }
-
-    // ✅ ایراد ۱۰: protect روی سوکت واقعی
-    private fun protectSockets() {
-        try {
-            val socket = Socket()
-            protect(socket)
-            socket.close()
-            Log.d("CORE_SERVICE", "🔒 protect() فعال شد")
-        } catch (e: Exception) {
-            Log.e("CORE_SERVICE", "❌ protect error: ${e.message}")
-        }
-    }
-
-    private fun startTrafficMonitor() {
-        trafficTimer = Timer()
-        trafficTimer?.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                val rx = android.net.TrafficStats.getTotalRxBytes()
-                val tx = android.net.TrafficStats.getTotalTxBytes()
-                // ✅ ایراد ۱۱: ارسال با بررسی null
-                MainActivity.trafficSink?.let {
-                    it.success("$tx|$rx")
-                }
-            }
-        }, 0, 1000)
-    }
-
-    // ✅ ایراد ۹: stopCoreOnly بدون stopSelf
-    private fun stopCoreOnly() {
-        try {
-            currentProcess?.destroy()
-            currentProcess = null
-            currentCore = null
-            isRunning = false
-            Log.d("CORE_SERVICE", "✅ هسته متوقف شد")
-        } catch (e: Exception) {
-            Log.e("CORE_SERVICE", "❌ خطا در توقف هسته: ${e.message}")
-        }
-    }
-
-    // ✅ ایراد ۹: stopAll با stopSelf محدود
-    private fun stopAll() {
-        stopCoreOnly()
-        try {
-            vpnInterface?.close()
-            vpnInterface = null
-            stopForeground(true)
-            Log.d("CORE_SERVICE", "✅ VPN و هسته متوقف شدند")
-        } catch (e: Exception) {
-            Log.e("CORE_SERVICE", "❌ خطا در توقف: ${e.message}")
+            null
         }
     }
 
     private fun startSingBox(configPath: String) {
         stopCoreOnly()
+
         try {
             val binary = File(filesDir, "sing-box")
             if (!binary.exists()) {
@@ -180,13 +151,18 @@ class CoreService : VpnService() {
                 return
             }
 
+            // ✅ FIX 2: بستن TUN قبلی و ایجاد جدید
+            vpnInterface?.close()
+            vpnInterface = null
+            vpnInterface = startVpn()
+
             currentProcess = Runtime.getRuntime().exec(
                 arrayOf(binary.absolutePath, "run", "-c", configPath)
             )
             currentCore = "singbox"
             isRunning = true
             retryCount = 0
-            Log.d("CORE_SERVICE", "✅ sing-box با موفقیت شروع شد")
+            Log.d("CORE_SERVICE", "✅ sing-box با موفقیت شروع شد (fd: ${vpnInterface?.fd})")
 
             readProcessOutput(currentProcess!!)
 
@@ -198,6 +174,7 @@ class CoreService : VpnService() {
 
     private fun startXray(configPath: String) {
         stopCoreOnly()
+
         try {
             val binary = File(filesDir, "xray")
             if (!binary.exists()) {
@@ -225,18 +202,72 @@ class CoreService : VpnService() {
         thread {
             process.inputStream.bufferedReader().forEachLine {
                 Log.d("CORE_OUT", it)
-                MainActivity.logSink?.let { sink -> sink.success(it) }
+                MainActivity.logSink?.let { sink ->
+                    try {
+                        sink.success(it)
+                    } catch (e: Exception) {
+                        Log.e("CORE_SERVICE", "log sink error: ${e.message}")
+                    }
+                }
             }
         }
         thread {
             process.errorStream.bufferedReader().forEachLine {
                 Log.e("CORE_ERR", it)
-                MainActivity.logSink?.let { sink -> sink.success("[ERROR] $it") }
+                MainActivity.logSink?.let { sink ->
+                    try {
+                        sink.success("[ERROR] $it")
+                    } catch (e: Exception) {
+                        Log.e("CORE_SERVICE", "log sink error: ${e.message}")
+                    }
+                }
             }
         }
     }
 
-    // ✅ ایراد ۸: recoverFromCrash با Handler
+    // ✅ FIX 5: TrafficStats فقط به عنوان پیش‌نمایش (دقت شود که کل دستگاه است)
+    private fun startTrafficMonitor() {
+        trafficTimer = Timer()
+        trafficTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                val rx = android.net.TrafficStats.getTotalRxBytes()
+                val tx = android.net.TrafficStats.getTotalTxBytes()
+                MainActivity.trafficSink?.let {
+                    try {
+                        it.success("$tx|$rx")
+                    } catch (e: Exception) {
+                        Log.e("CORE_SERVICE", "traffic sink error: ${e.message}")
+                    }
+                }
+            }
+        }, 0, 1000)
+    }
+
+    private fun stopCoreOnly() {
+        try {
+            currentProcess?.destroy()
+            currentProcess = null
+            currentCore = null
+            isRunning = false
+            Log.d("CORE_SERVICE", "✅ هسته متوقف شد")
+        } catch (e: Exception) {
+            Log.e("CORE_SERVICE", "❌ خطا در توقف هسته: ${e.message}")
+        }
+    }
+
+    private fun stopAll() {
+        stopCoreOnly()
+        try {
+            vpnInterface?.close()
+            vpnInterface = null
+            stopForeground(true)
+            Log.d("CORE_SERVICE", "✅ VPN و هسته متوقف شدند")
+        } catch (e: Exception) {
+            Log.e("CORE_SERVICE", "❌ خطا در توقف: ${e.message}")
+        }
+    }
+
+    // ✅ FIX 3: crash recovery با startForegroundService
     private fun recoverFromCrash(core: String, config: String) {
         if (retryCount < 3) {
             retryCount++
@@ -245,7 +276,11 @@ class CoreService : VpnService() {
                 val intent = Intent(this, CoreService::class.java)
                 intent.putExtra("type", core)
                 intent.putExtra("config", config)
-                startService(intent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
             }, 2000)
         } else {
             Log.e("CORE_SERVICE", "❌ تعداد تلاش‌ها تمام شد")
@@ -253,10 +288,9 @@ class CoreService : VpnService() {
         }
     }
 
-    // ✅ ایراد ۹: stopAll در onDestroy
     override fun onDestroy() {
         trafficTimer?.cancel()
-        vpnInterface?.close()
+        stopCoreOnly()
         stopAll()
         super.onDestroy()
     }

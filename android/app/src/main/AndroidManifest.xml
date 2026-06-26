@@ -30,7 +30,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ✅ ایراد ۲: سرویس کامل با BIND_VPN_SERVICE -->
         <service
             android:name=".CoreService"
             android:permission="android.permission.BIND_VPN_SERVICE"

@@ -28,12 +28,15 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ✅ ایراد ۵: درخواست مجوز POST_NOTIFICATIONS برای Android 13+
+        // ✅ Android 13+ مجوز نوتیفیکیشن
         if (Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1002)
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    1002
+                )
             }
         }
 
@@ -127,7 +130,6 @@ class MainActivity : FlutterActivity() {
                     result.success("Core Switched")
                 }
 
-                // ✅ ایراد ۴: Base64 decode
                 "fetchSubscription" -> {
                     val url = call.argument<String>("url") ?: ""
                     val installer = CoreInstaller(this)
@@ -150,7 +152,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // ✅ ایراد ۴: onActivityResult
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK) {
