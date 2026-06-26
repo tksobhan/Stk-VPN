@@ -54,14 +54,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // MAJOR-07: تبدیل واقعی VMESS
+  // ✅ تبدیل VMESS
   String? _convertVmessToJson(String link) {
     try {
-      // vmess://base64
       final base64 = link.substring(8);
       final decoded = utf8.decode(base64Decode(base64));
       final json = jsonDecode(decoded);
-      // تبدیل به فرمت sing-box
       return jsonEncode({
         "type": "vmess",
         "tag": "proxy",
@@ -93,10 +91,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // MAJOR-07: تبدیل واقعی Trojan
+  // ✅ تبدیل Trojan
   String? _convertTrojanToJson(String link) {
     try {
-      // trojan://password@host:port?security=tls&sni=...
       final raw = link.substring(9);
       final atIndex = raw.indexOf('@');
       if (atIndex == -1) return null;
@@ -131,10 +128,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // MAJOR-07: تبدیل واقعی Shadowsocks
+  // ✅ تبدیل Shadowsocks
   String? _convertShadowsocksToJson(String link) {
     try {
-      // ss://base64
       final base64 = link.substring(5);
       final decoded = utf8.decode(base64Decode(base64));
       final parts = decoded.split('@');
@@ -164,6 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ✅ تبدیل VLESS با شرطی TLS (FIX 2)
   String? _convertVlessToJson(String link) {
     try {
       final raw = link.substring(8);
@@ -176,6 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final hostParts = hostPort.split(':');
       final address = hostParts[0];
       final port = int.tryParse(hostParts[1]) ?? 443;
+
       Map<String, String> params = {};
       if (query.isNotEmpty) {
         query.split('&').forEach((pair) {
@@ -185,6 +183,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
         });
       }
+
       final path = params['path'] ?? '/';
       final security = params['security'] ?? 'tls';
       final encryption = params['encryption'] ?? 'none';
@@ -192,9 +191,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final sni = params['sni'] ?? host;
       final fp = params['fp'] ?? 'chrome';
       final type = params['type'] ?? 'ws';
+
+      // ✅ شرطی: TLS فقط در صورت نیاز
+      final streamSettings = <String, dynamic>{};
+      streamSettings["network"] = type;
+
+      if (security == "tls") {
+        streamSettings["security"] = "tls";
+        streamSettings["tlsSettings"] = {
+          "serverName": sni,
+          "fingerprint": fp
+        };
+      }
+
+      if (type == "ws") {
+        streamSettings["wsSettings"] = {
+          "path": path,
+          "headers": {"Host": host}
+        };
+      }
+
       final jsonConfig = {
-        "log": {"level": "info"},
-        "dns": {"servers": ["1.1.1.1"]},
+        "log": {"loglevel": "info"},
         "inbounds": [
           {
             "type": "tun",
@@ -222,15 +240,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 }
               ]
             },
-            "streamSettings": {
-              "network": type,
-              "security": security,
-              "tlsSettings": {"serverName": sni, "fingerprint": fp},
-              "wsSettings": {
-                "path": path,
-                "headers": {"Host": host}
-              }
-            }
+            "streamSettings": streamSettings
           }
         ],
         "route": {"final": "proxy"}
@@ -241,6 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ✅ تبدیل هر نوع لینک
   String? _convertAnyToJson(String link) {
     if (link.startsWith('vless://')) return _convertVlessToJson(link);
     if (link.startsWith('vmess://')) return _convertVmessToJson(link);
