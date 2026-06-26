@@ -8,10 +8,11 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 
 class CoreInstaller(private val context: Context) {
 
-    // ✅ مرحله 15: Subscription Engine
     fun fetchSubscription(url: String): String {
         return try {
             val connection = URL(url).openConnection() as HttpURLConnection
@@ -24,8 +25,7 @@ class CoreInstaller(private val context: Context) {
     }
 
     fun parseSubscription(data: String): List<String> {
-        val lines = data.split("\n")
-        return lines.filter {
+        return data.split("\n").filter {
             it.startsWith("vless://") ||
             it.startsWith("vmess://") ||
             it.startsWith("trojan://") ||
@@ -33,7 +33,6 @@ class CoreInstaller(private val context: Context) {
         }
     }
 
-    // ✅ مرحله 3-5: دانلود و نصب هسته‌ها
     fun installIfNeeded(name: String): Boolean {
         val binary = File(context.filesDir, name)
         if (binary.exists() && binary.canExecute()) {
@@ -53,18 +52,16 @@ class CoreInstaller(private val context: Context) {
             val archive = File(context.filesDir, "$name.archive")
             downloadFile(url, archive)
 
-            // ✅ مرحله 4: استخراج sing-box
             if (name == "sing-box") {
                 extractTarGz(archive, context.filesDir)
             } else {
-                // ✅ مرحله 5: استخراج xray
                 extractZip(archive, context.filesDir)
             }
 
-            // تغییر نام فایل استخراج شده به نام صحیح
             val extracted = findExtractedBinary(name)
             if (extracted != null && extracted.renameTo(binary)) {
                 binary.setExecutable(true, false)
+                archive.delete()
                 Log.d("INSTALLER", "✅ $name نصب شد")
                 true
             } else {
@@ -76,7 +73,6 @@ class CoreInstaller(private val context: Context) {
         }
     }
 
-    // ✅ مرحله 3: دانلود فایل
     private fun downloadFile(url: String, output: File) {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = true
@@ -88,23 +84,38 @@ class CoreInstaller(private val context: Context) {
         }
     }
 
-    // ✅ مرحله 4: استخراج tar.gz
+    // ✅ ایراد ۶: استخراج با کتابخانه compress (بدون نیاز به tar)
     private fun extractTarGz(archive: File, outputDir: File) {
-        val process = Runtime.getRuntime().exec(
-            arrayOf("tar", "-xzf", archive.absolutePath, "-C", outputDir.absolutePath)
-        )
-        process.waitFor()
+        TarArchiveInputStream(GzipCompressorInputStream(FileInputStream(archive))).use { tar ->
+            var entry = tar.nextEntry
+            while (entry != null) {
+                val outFile = File(outputDir, entry.name)
+                if (entry.isDirectory) {
+                    outFile.mkdirs()
+                } else {
+                    outFile.parentFile?.mkdirs()
+                    FileOutputStream(outFile).use { out ->
+                        tar.copyTo(out)
+                    }
+                }
+                entry = tar.nextEntry
+            }
+        }
         archive.delete()
     }
 
-    // ✅ مرحله 5: استخراج zip
     private fun extractZip(archive: File, outputDir: File) {
         ZipInputStream(FileInputStream(archive)).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
                 val outFile = File(outputDir, entry.name)
-                FileOutputStream(outFile).use { out ->
-                    zis.copyTo(out)
+                if (entry.isDirectory) {
+                    outFile.mkdirs()
+                } else {
+                    outFile.parentFile?.mkdirs()
+                    FileOutputStream(outFile).use { out ->
+                        zis.copyTo(out)
+                    }
                 }
                 entry = zis.nextEntry
             }
@@ -112,16 +123,12 @@ class CoreInstaller(private val context: Context) {
         archive.delete()
     }
 
-    // پیدا کردن فایل باینری استخراج شده
     private fun findExtractedBinary(name: String): File? {
-        val files = context.filesDir.listFiles()
-        return files?.firstOrNull {
-            it.name.contains(name) && it.isFile && !it.name.endsWith(".archive")
+        context.filesDir.walkTopDown().forEach {
+            if (it.isFile && it.name.contains(name) && !it.name.endsWith(".archive")) {
+                return it
+            }
         }
-    }
-
-    // ✅ مرحله 19: Auto Update Core
-    fun checkForUpdate(name: String): Boolean {
-        return false
+        return null
     }
 }

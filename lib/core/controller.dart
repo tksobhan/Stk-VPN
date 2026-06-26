@@ -62,13 +62,12 @@ class CoreController {
     }
   }
 
-  // ✅ مرحله 9: دریافت لاگ‌ها
+  // ✅ ایراد ۱: توابع getLogs و getTraffic
   static Stream<String> getLogs() {
-    return _logChannel.receiveBroadcastStream().cast<String>();
+    return _logChannel.receiveBroadcastStream().map((event) => event.toString());
   }
 
-  // ✅ مرحله 9: دریافت ترافیک
   static Stream<String> getTraffic() {
-    return _trafficChannel.receiveBroadcastStream().cast<String>();
+    return _trafficChannel.receiveBroadcastStream().map((event) => event.toString());
   }
 }

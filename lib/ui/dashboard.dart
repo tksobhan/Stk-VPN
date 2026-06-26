@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:v2ray_stk/core/controller.dart';
 import 'package:v2ray_stk/services/config_service.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -37,7 +38,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // ✅ مرحله 9: دریافت لاگ‌ها
   void _listenToLogs() {
     CoreController.getLogs().listen((log) {
       setState(() {
@@ -46,7 +46,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // ✅ مرحله 9: دریافت ترافیک
   void _listenToTraffic() {
     CoreController.getTraffic().listen((data) {
       setState(() {
@@ -55,21 +54,116 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // ✅ مرحله 12: تبدیل انواع لینک
-  String? _convertAnyToJson(String link) {
-    if (link.startsWith('vless://')) {
-      return _convertVlessToJson(link);
-    } else if (link.startsWith('vmess://')) {
-      return _convertVmessToJson(link);
-    } else if (link.startsWith('trojan://')) {
-      return _convertTrojanToJson(link);
-    } else if (link.startsWith('ss://')) {
-      return _convertShadowsocksToJson(link);
+  // MAJOR-07: تبدیل واقعی VMESS
+  String? _convertVmessToJson(String link) {
+    try {
+      // vmess://base64
+      final base64 = link.substring(8);
+      final decoded = utf8.decode(base64Decode(base64));
+      final json = jsonDecode(decoded);
+      // تبدیل به فرمت sing-box
+      return jsonEncode({
+        "type": "vmess",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [{
+            "address": json['add'],
+            "port": int.parse(json['port']),
+            "users": [{
+              "id": json['id'],
+              "security": json['s'] ?? "auto",
+              "alterId": int.parse(json['aid'] ?? "0")
+            }]
+          }]
+        },
+        "streamSettings": {
+          "network": json['net'] ?? "tcp",
+          "security": json['tls'] ?? "",
+          "tlsSettings": {
+            "serverName": json['sni'] ?? json['host'] ?? ""
+          },
+          "wsSettings": {
+            "path": json['path'] ?? "/",
+            "headers": {"Host": json['host'] ?? ""}
+          }
+        }
+      });
+    } catch (e) {
+      return null;
     }
-    return null;
   }
 
-  // ✅ مرحله 15: Config معتبر sing-box
+  // MAJOR-07: تبدیل واقعی Trojan
+  String? _convertTrojanToJson(String link) {
+    try {
+      // trojan://password@host:port?security=tls&sni=...
+      final raw = link.substring(9);
+      final atIndex = raw.indexOf('@');
+      if (atIndex == -1) return null;
+      final password = raw.substring(0, atIndex);
+      final rest = raw.substring(atIndex + 1);
+      final hostPort = rest.split('?')[0];
+      final hostParts = hostPort.split(':');
+      final address = hostParts[0];
+      final port = int.tryParse(hostParts[1]) ?? 443;
+      return jsonEncode({
+        "type": "trojan",
+        "tag": "proxy",
+        "settings": {
+          "servers": [{
+            "address": address,
+            "port": port,
+            "password": password,
+            "flow": ""
+          }]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "example.com",
+            "fingerprint": "chrome"
+          }
+        }
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // MAJOR-07: تبدیل واقعی Shadowsocks
+  String? _convertShadowsocksToJson(String link) {
+    try {
+      // ss://base64
+      final base64 = link.substring(5);
+      final decoded = utf8.decode(base64Decode(base64));
+      final parts = decoded.split('@');
+      if (parts.length != 2) return null;
+      final methodPass = parts[0].split(':');
+      if (methodPass.length != 2) return null;
+      final method = methodPass[0];
+      final password = methodPass[1];
+      final serverParts = parts[1].split(':');
+      if (serverParts.length != 2) return null;
+      final address = serverParts[0];
+      final port = int.tryParse(serverParts[1]) ?? 443;
+      return jsonEncode({
+        "type": "shadowsocks",
+        "tag": "proxy",
+        "settings": {
+          "servers": [{
+            "address": address,
+            "port": port,
+            "method": method,
+            "password": password
+          }]
+        }
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
   String? _convertVlessToJson(String link) {
     try {
       final raw = link.substring(8);
@@ -147,16 +241,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  String? _convertVmessToJson(String link) {
-    return '{"type":"vmess","raw":"$link"}';
-  }
-
-  String? _convertTrojanToJson(String link) {
-    return '{"type":"trojan","raw":"$link"}';
-  }
-
-  String? _convertShadowsocksToJson(String link) {
-    return '{"type":"ss","raw":"$link"}';
+  String? _convertAnyToJson(String link) {
+    if (link.startsWith('vless://')) return _convertVlessToJson(link);
+    if (link.startsWith('vmess://')) return _convertVmessToJson(link);
+    if (link.startsWith('trojan://')) return _convertTrojanToJson(link);
+    if (link.startsWith('ss://')) return _convertShadowsocksToJson(link);
+    return null;
   }
 
   void _addConfigDialog() {
@@ -188,7 +278,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 );
                 return;
               }
-              // ✅ مرحله 13: رفع RangeError
               final host = link.contains('@')
                   ? link.split('@')[1].split('?')[0]
                   : 'unknown';
@@ -283,7 +372,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     try {
       final result = await CoreController.startCore(coreType, activeConfig!);
-      // ✅ مرحله 10: اصلاح وضعیت اتصال
       if (result.contains("Started")) {
         setState(() => status = 'CONNECTED');
         ScaffoldMessenger.of(context).showSnackBar(

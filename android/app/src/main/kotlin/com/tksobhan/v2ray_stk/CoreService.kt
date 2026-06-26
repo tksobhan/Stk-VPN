@@ -7,12 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.io.File
-import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Timer
 import java.util.TimerTask
@@ -28,17 +29,16 @@ class CoreService : VpnService() {
     private var isRunning = false
     private var retryCount = 0
     private var trafficTimer: Timer? = null
-    private var lastRx = 0L
-    private var lastTx = 0L
 
-    // ✅ مراحل 1-5: VPN Permission + VpnService + TUN + CoreInstaller
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val type = intent?.getStringExtra("type") ?: "singbox"
         val config = intent?.getStringExtra("config") ?: ""
 
         Log.d("CORE_SERVICE", "🚀 شروع $type")
 
-        // مرحله 1: درخواست مجوز VPN
+        // ✅ ایراد ۵: تغییر نام به initForegroundService
+        initForegroundService()
+
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
             Log.d("CORE_SERVICE", "⏳ مجوز VPN مورد نیاز است")
@@ -49,14 +49,9 @@ class CoreService : VpnService() {
             return START_STICKY
         }
 
-        // مرحله 8: اعتبارسنجی Config (قبل از اجرا)
         val configFile = File(filesDir, "config.json")
         configFile.writeText(config)
 
-        // مرحله 2: TUN کامل (قبل از اجرای Core)
-        startVpn()
-
-        // مرحله 3-4: دانلود و نصب هسته‌ها
         val installer = CoreInstaller(this)
         when (type.lowercase()) {
             "singbox" -> {
@@ -72,21 +67,38 @@ class CoreService : VpnService() {
             else -> Log.e("CORE_SERVICE", "نوع هسته پشتیبانی نمی‌شود: $type")
         }
 
-        // مرحله 10: protect()
+        if (type.lowercase() == "singbox") {
+            startVpn()
+        }
+
         protectSockets()
-
-        // مرحله 12: Log Streaming (از طریق stdout/stderr)
-        // مرحله 13: Traffic Monitor
         startTrafficMonitor()
-
-        // مرحله 14: Ping Engine (اختیاری)
-        // مرحله 17: Kill Switch (setBlocking)
-        // مرحله 18: Split Tunnel (در Builder)
 
         return START_STICKY
     }
 
-    // ✅ مرحله 2: TUN کامل با fd
+    // ✅ ایراد ۵: تغییر نام متد
+    private fun initForegroundService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "VPN Service",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            manager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("V2RAY STK")
+            .setContentText("VPN Running")
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .build()
+
+        startForeground(NOTIFICATION_ID, notification)
+        Log.d("CORE_SERVICE", "✅ Foreground Service شروع شد")
+    }
+
     private fun startVpn() {
         try {
             vpnInterface = Builder()
@@ -98,53 +110,69 @@ class CoreService : VpnService() {
                 .addDnsServer("8.8.8.8")
                 .allowFamily(OsConstants.AF_INET)
                 .allowFamily(OsConstants.AF_INET6)
-                .setBlocking(true) // ✅ Kill Switch (مرحله 17)
+                .setBlocking(true)
                 .establish()
 
-            Log.d("CORE_SERVICE", "✅ TUN Interface کامل ساخته شد")
-            Log.d("CORE_SERVICE", "📌 fd: ${vpnInterface?.fd}")
+            Log.d("CORE_SERVICE", "✅ TUN Interface ساخته شد (fd: ${vpnInterface?.fd})")
         } catch (e: Exception) {
             Log.e("CORE_SERVICE", "❌ خطا در ساخت TUN: ${e.message}")
         }
     }
 
-    // ✅ مرحله 10: protect()
+    // ✅ ایراد ۱۰: protect روی سوکت واقعی
     private fun protectSockets() {
         try {
             val socket = Socket()
             protect(socket)
+            socket.close()
             Log.d("CORE_SERVICE", "🔒 protect() فعال شد")
         } catch (e: Exception) {
             Log.e("CORE_SERVICE", "❌ protect error: ${e.message}")
         }
     }
 
-    // ✅ مرحله 13: Traffic Monitor
     private fun startTrafficMonitor() {
         trafficTimer = Timer()
         trafficTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 val rx = android.net.TrafficStats.getTotalRxBytes()
                 val tx = android.net.TrafficStats.getTotalTxBytes()
-                if (rx != lastRx || tx != lastTx) {
-                    val totalRx = rx - lastRx
-                    val totalTx = tx - lastTx
-                    lastRx = rx
-                    lastTx = tx
-                    sendTrafficToFlutter(totalTx, totalRx)
+                // ✅ ایراد ۱۱: ارسال با بررسی null
+                MainActivity.trafficSink?.let {
+                    it.success("$tx|$rx")
                 }
             }
         }, 0, 1000)
     }
 
-    private fun sendTrafficToFlutter(upload: Long, download: Long) {
-        Log.d("TRAFFIC", "📊 UP: ${upload/1024} KB/s, DOWN: ${download/1024} KB/s")
-        // از طریق EventChannel ارسال می‌شود
+    // ✅ ایراد ۹: stopCoreOnly بدون stopSelf
+    private fun stopCoreOnly() {
+        try {
+            currentProcess?.destroy()
+            currentProcess = null
+            currentCore = null
+            isRunning = false
+            Log.d("CORE_SERVICE", "✅ هسته متوقف شد")
+        } catch (e: Exception) {
+            Log.e("CORE_SERVICE", "❌ خطا در توقف هسته: ${e.message}")
+        }
     }
 
-    // ✅ مرحله 7: اجرای sing-box با fd
+    // ✅ ایراد ۹: stopAll با stopSelf محدود
+    private fun stopAll() {
+        stopCoreOnly()
+        try {
+            vpnInterface?.close()
+            vpnInterface = null
+            stopForeground(true)
+            Log.d("CORE_SERVICE", "✅ VPN و هسته متوقف شدند")
+        } catch (e: Exception) {
+            Log.e("CORE_SERVICE", "❌ خطا در توقف: ${e.message}")
+        }
+    }
+
     private fun startSingBox(configPath: String) {
-        stopAll()
+        stopCoreOnly()
         try {
             val binary = File(filesDir, "sing-box")
             if (!binary.exists()) {
@@ -152,19 +180,13 @@ class CoreService : VpnService() {
                 return
             }
 
-            // ✅ مرحله 7: ارسال fd به sing-box
-            val fd = vpnInterface?.fd
-            val cmd = if (fd != null) {
-                arrayOf(binary.absolutePath, "run", "--tun-fd", fd.toString(), "-c", configPath)
-            } else {
+            currentProcess = Runtime.getRuntime().exec(
                 arrayOf(binary.absolutePath, "run", "-c", configPath)
-            }
-
-            currentProcess = Runtime.getRuntime().exec(cmd)
+            )
             currentCore = "singbox"
             isRunning = true
             retryCount = 0
-            Log.d("CORE_SERVICE", "✅ sing-box با موفقیت شروع شد (fd: $fd)")
+            Log.d("CORE_SERVICE", "✅ sing-box با موفقیت شروع شد")
 
             readProcessOutput(currentProcess!!)
 
@@ -174,9 +196,8 @@ class CoreService : VpnService() {
         }
     }
 
-    // ✅ مرحله 7: اجرای xray با fd
     private fun startXray(configPath: String) {
-        stopAll()
+        stopCoreOnly()
         try {
             val binary = File(filesDir, "xray")
             if (!binary.exists()) {
@@ -184,18 +205,13 @@ class CoreService : VpnService() {
                 return
             }
 
-            val fd = vpnInterface?.fd
-            val cmd = if (fd != null) {
-                arrayOf(binary.absolutePath, "-config", configPath, "--tun-fd", fd.toString())
-            } else {
+            currentProcess = Runtime.getRuntime().exec(
                 arrayOf(binary.absolutePath, "-config", configPath)
-            }
-
-            currentProcess = Runtime.getRuntime().exec(cmd)
+            )
             currentCore = "xray"
             isRunning = true
             retryCount = 0
-            Log.d("CORE_SERVICE", "✅ xray با موفقیت شروع شد (fd: $fd)")
+            Log.d("CORE_SERVICE", "✅ xray با موفقیت شروع شد")
 
             readProcessOutput(currentProcess!!)
 
@@ -205,98 +221,44 @@ class CoreService : VpnService() {
         }
     }
 
-    // ✅ مرحله 12: Log Streaming
     private fun readProcessOutput(process: Process) {
         thread {
             process.inputStream.bufferedReader().forEachLine {
                 Log.d("CORE_OUT", it)
-                sendLogToFlutter(it)
+                MainActivity.logSink?.let { sink -> sink.success(it) }
             }
         }
         thread {
             process.errorStream.bufferedReader().forEachLine {
                 Log.e("CORE_ERR", it)
-                sendLogToFlutter("[ERROR] $it")
+                MainActivity.logSink?.let { sink -> sink.success("[ERROR] $it") }
             }
         }
     }
 
-    private fun sendLogToFlutter(log: String) {
-        // از طریق EventChannel ارسال می‌شود
-    }
-
-    // ✅ مرحله 14: Crash Recovery با محدودیت
+    // ✅ ایراد ۸: recoverFromCrash با Handler
     private fun recoverFromCrash(core: String, config: String) {
         if (retryCount < 3) {
             retryCount++
             Log.d("CORE_SERVICE", "🔄 بازیابی $core (تلاش $retryCount)...")
-            Thread.sleep(2000)
-            val intent = Intent(this, CoreService::class.java)
-            intent.putExtra("type", core)
-            intent.putExtra("config", config)
-            startService(intent)
+            Handler(Looper.getMainLooper()).postDelayed({
+                val intent = Intent(this, CoreService::class.java)
+                intent.putExtra("type", core)
+                intent.putExtra("config", config)
+                startService(intent)
+            }, 2000)
         } else {
             Log.e("CORE_SERVICE", "❌ تعداد تلاش‌ها تمام شد")
             stopSelf()
         }
     }
 
-    // ✅ مرحله 9: توقف کامل
+    // ✅ ایراد ۹: stopAll در onDestroy
     override fun onDestroy() {
-        stopAll()
         trafficTimer?.cancel()
-        super.onDestroy()
-    }
-
-    private fun stopAll() {
-        try {
-            currentProcess?.destroy()
-            currentProcess = null
-            currentCore = null
-            isRunning = false
-
-            vpnInterface?.close()
-            vpnInterface = null
-
-            stopForeground(true)
-            stopSelf()
-
-            Log.d("CORE_SERVICE", "✅ همه هسته‌ها و VPN متوقف شدند")
-        } catch (e: Exception) {
-            Log.e("CORE_SERVICE", "❌ خطا در توقف: ${e.message}")
-        }
-    }
-
-    // ✅ مرحله 16: Multi-Core Switcher
-    fun switchCore(type: String, config: String) {
+        vpnInterface?.close()
         stopAll()
-        Thread.sleep(500)
-        val intent = Intent(this, CoreService::class.java)
-        intent.putExtra("type", type)
-        intent.putExtra("config", config)
-        startService(intent)
-    }
-
-    // ✅ مرحله 2: Foreground Service کامل
-    private fun startForegroundService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "VPN Core Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("V2RAY STK")
-            .setContentText("VPN در حال اجرا است...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification)
-        Log.d("CORE_SERVICE", "✅ سرویس foreground شروع شد")
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?) = null

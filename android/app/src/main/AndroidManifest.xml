@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:label="V2RAY stk"
+        android:label="V2RAY STK"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
@@ -30,10 +30,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- ✅ ایراد ۲: سرویس کامل با BIND_VPN_SERVICE -->
         <service
             android:name=".CoreService"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="dataSync">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
