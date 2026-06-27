@@ -1,25 +1,32 @@
-import 'package:flutter_v2ray_plus/flutter_v2ray_plus.dart';
-import 'package:v2ray_stk/services/notification_service.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray.dart';
 
 class VpnService {
   static final VpnService _instance = VpnService._internal();
   factory VpnService() => _instance;
   VpnService._internal();
 
-  final V2RayPlus _v2ray = V2RayPlus();
+  final V2ray _v2ray = V2ray(
+    onStatusChanged: (status) {
+      print('V2Ray status: ${status.state}');
+    },
+  );
+
   bool _isConnected = false;
-  final NotificationService _notif = NotificationService();
+  bool _isInitialized = false;
 
   bool get isConnected => _isConnected;
 
   Future<void> initialize() async {
-    await _notif.init();
-    // تنظیمات اولیه V2RayPlus
-    await _v2ray.initialize();
-    print('✅ V2RayPlus و نوتیفیکیشن مقداردهی اولیه شدند');
+    if (_isInitialized) return;
+    await _v2ray.initialize(
+      notificationIconResourceType: "mipmap",
+      notificationIconResourceName: "ic_launcher",
+    );
+    _isInitialized = true;
   }
 
-  Future<void> startVpn(String config) async {
+  Future<void> connect(String config) async {
+    if (!_isInitialized) await initialize();
     try {
       await _v2ray.startV2Ray(
         remark: 'V2RAY stk',
@@ -27,47 +34,26 @@ class VpnService {
         useSystemProxy: false,
       );
       _isConnected = true;
-      await _notif.showPersistentNotification(
-        '✅ VPN وصل شد',
-        'در حال حفاظت از اتصال شما',
-      );
-      print('✅ V2RayPlus متصل شد');
     } catch (e) {
-      print('❌ خطا در اتصال V2RayPlus: $e');
       _isConnected = false;
       rethrow;
     }
   }
 
-  Future<void> stopVpn() async {
+  Future<void> disconnect() async {
     try {
       await _v2ray.stopV2Ray();
       _isConnected = false;
-      await _notif.cancelAll();
-      await _notif.showNotification(
-        '❌ VPN قطع شد',
-        'اتصال VPN قطع گردید',
-      );
-      print('❌ V2RayPlus قطع شد');
     } catch (e) {
-      print('❌ خطا در قطع V2RayPlus: $e');
       rethrow;
     }
   }
 
-  Future<void> toggleVpn(String config) async {
-    if (_isConnected) {
-      await stopVpn();
-    } else {
-      await startVpn(config);
-    }
-  }
-
-  Future<String?> getStatus() async {
+  Future<bool> isRunning() async {
     try {
-      return await _v2ray.getStatus();
+      return await _v2ray.isRunning();
     } catch (e) {
-      return null;
+      return false;
     }
   }
 }
