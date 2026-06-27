@@ -1,52 +1,39 @@
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:flutter_v2ray_plus/flutter_v2ray_plus.dart';
+import 'package:v2ray_stk/services/notification_service.dart';
 
 class VpnService {
   static final VpnService _instance = VpnService._internal();
   factory VpnService() => _instance;
   VpnService._internal();
 
-  V2ray? _v2ray;
+  final V2RayPlus _v2ray = V2RayPlus();
   bool _isConnected = false;
-  bool _isInitialized = false;
+  final NotificationService _notif = NotificationService();
 
   bool get isConnected => _isConnected;
 
-  Future<void> initialize({
-    String notificationIconResourceType = 'mipmap',
-    String notificationIconResourceName = 'ic_launcher',
-  }) async {
-    if (_isInitialized) return;
-
-    _v2ray = V2ray(
-      onStatusChanged: (status) {
-        // در صورت نیاز می‌توان وضعیت را پردازش کرد
-        // اما فعلاً از _isConnected استفاده می‌کنیم
-      },
-    );
-
-    await _v2ray!.initialize(
-      notificationIconResourceType: notificationIconResourceType,
-      notificationIconResourceName: notificationIconResourceName,
-    );
-
-    _isInitialized = true;
-    print('✅ V2Ray مقداردهی اولیه شد');
+  Future<void> initialize() async {
+    await _notif.init();
+    // تنظیمات اولیه V2RayPlus
+    await _v2ray.initialize();
+    print('✅ V2RayPlus و نوتیفیکیشن مقداردهی اولیه شدند');
   }
 
   Future<void> startVpn(String config) async {
-    if (!_isInitialized) {
-      await initialize();
-    }
-
     try {
-      await _v2ray!.startV2Ray(
-        config: config,
+      await _v2ray.startV2Ray(
         remark: 'V2RAY stk',
+        config: config,
+        useSystemProxy: false,
       );
       _isConnected = true;
-      print('✅ V2Ray متصل شد');
+      await _notif.showPersistentNotification(
+        '✅ VPN وصل شد',
+        'در حال حفاظت از اتصال شما',
+      );
+      print('✅ V2RayPlus متصل شد');
     } catch (e) {
-      print('❌ خطا در اتصال V2Ray: $e');
+      print('❌ خطا در اتصال V2RayPlus: $e');
       _isConnected = false;
       rethrow;
     }
@@ -54,11 +41,16 @@ class VpnService {
 
   Future<void> stopVpn() async {
     try {
-      await _v2ray?.stopV2Ray();
+      await _v2ray.stopV2Ray();
       _isConnected = false;
-      print('❌ V2Ray قطع شد');
+      await _notif.cancelAll();
+      await _notif.showNotification(
+        '❌ VPN قطع شد',
+        'اتصال VPN قطع گردید',
+      );
+      print('❌ V2RayPlus قطع شد');
     } catch (e) {
-      print('❌ خطا در قطع V2Ray: $e');
+      print('❌ خطا در قطع V2RayPlus: $e');
       rethrow;
     }
   }
@@ -71,10 +63,9 @@ class VpnService {
     }
   }
 
-  Future<String?> getServerDelay(String config) async {
+  Future<String?> getStatus() async {
     try {
-      final delay = await _v2ray?.getServerDelay(config: config);
-      return delay != null ? '${delay}ms' : null;
+      return await _v2ray.getStatus();
     } catch (e) {
       return null;
     }
