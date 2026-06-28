@@ -19,7 +19,7 @@ android {
 
     defaultConfig {
         applicationId = "com.tksobhan.v2ray_stk"
-        minSdk = 23
+        minSdk = 21
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.38"
@@ -33,17 +33,9 @@ android {
 }
 
 flutter {
-    source = "../.."
+    source = "../.." 
 }
-dependencies {
-    implementation 'org.apache.commons:commons-compress:1.26.0'
-}
-dependencies {
-    implementation 'org.apache.commons:commons-compress:1.26.0'
-}
-dependencies {
-    implementation 'org.apache.commons:commons-compress:1.26.0'
-}
+
 dependencies {
     implementation 'org.apache.commons:commons-compress:1.26.0'
 }
