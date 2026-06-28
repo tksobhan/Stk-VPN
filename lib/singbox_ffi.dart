@@ -15,8 +15,10 @@ class SingboxFFI {
       if (Platform.isAndroid) {
         _lib = DynamicLibrary.open('libsingbox.so');
         print('✅ libsingbox.so بارگذاری شد');
+      } else if (Platform.isLinux) {
+        _lib = DynamicLibrary.open('libsingbox.so');
       } else {
-        throw Exception('پلتفرم پشتیبانی نمی‌شود');
+        throw Exception('پلتفرم پشتیبانی نمی‌شود: ${Platform.operatingSystem}');
       }
     } catch (e) {
       print('❌ خطا در بارگذاری libsingbox.so: $e');
